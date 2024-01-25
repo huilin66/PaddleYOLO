@@ -1,0 +1,92 @@
+_BASE_: [
+  '../datasets/data2560.yml',
+  '../runtime.yml',
+  './_base_/optimizer_500e_high.yml',
+  './_base_/yolop_crn.yml',
+  './_base_/yolop_reader_high_aug.yml',
+]
+
+log_iter: 50
+snapshot_epoch: 1
+weights: output/yolov8_l_500e_coco/model_final
+
+
+
+TrainReader:
+  batch_size: 1 # default 8 gpus, total bs = 128
+EvalReader:
+  batch_size: 1
+
+TrainDataset:
+  name: COCODataSet
+  image_dir: images_val
+  anno_path: annotations/instance_val.json_coco.json
+  dataset_dir: E:\data\0111_testdata\data_labeled\slice_coco2560
+
+
+
+architecture: YOLOP
+YOLOP:
+  backbone: CSPResNet
+  backbonec: swin_T3_224
+  neck: CustomCSPPAN
+  yolo_head: YOLOPHead
+  post_process: ~
+
+CSPResNet:
+  layers: [3, 6, 6, 3]
+  channels: [64, 128, 256, 512, 1024]
+  return_idx: [1, 2, 3]
+  use_large_stem: True
+  use_alpha: True
+
+CustomCSPPAN:
+  out_channels: [768, 384, 192]
+  stage_num: 1
+  block_num: 3
+  act: 'swish'
+  spp: true
+
+YOLOPHead:
+  fpn_strides: [32, 16, 8]
+  grid_cell_scale: 5.0
+  grid_cell_offset: 0.5
+  static_assigner_epoch: 30
+  use_varifocal_loss: True
+  loss_weight: {class: 1.0, iou: 2.5, dfl: 0.5}
+  static_assigner:
+    name: ATSSAssigner
+    topk: 9
+  assigner:
+    name: TaskAlignedAssigner
+    topk: 13
+    alpha: 1.0
+    beta: 6.0
+  nms:
+    name: MultiClassNMS
+    nms_top_k: 1000
+    keep_top_k: 300
+    score_threshold: 0.01
+    nms_threshold: 0.7
+
+depth_mult: 0.33
+width_mult: 0.50
+
+epoch: 80
+
+LearningRate:
+  base_lr: 0.001
+  schedulers:
+    - name: CosineDecay
+      max_epochs: 96
+    - name: LinearWarmup
+      start_factor: 0.
+      epochs: 5
+
+OptimizerBuilder:
+  optimizer:
+    momentum: 0.9
+    type: Momentum
+  regularizer:
+    factor: 0.0005
+    type: L2

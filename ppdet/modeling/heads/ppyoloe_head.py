@@ -27,6 +27,7 @@ from ..assigners.utils import generate_anchors_for_grid_cell
 from ppdet.modeling.backbones.cspresnet import ConvBNLayer, RepVggBlock
 from ppdet.modeling.ops import get_static_shape, get_act_fn
 from ppdet.modeling.layers import MultiClassNMS
+import numpy as np
 
 __all__ = ['PPYOLOEHead', 'SimpleConvHead']
 
@@ -530,6 +531,65 @@ class PPYOLOEHead(nn.Layer):
             else:
                 bbox_pred, bbox_num, _ = self.nms(pred_bboxes, pred_scores)
                 return bbox_pred, bbox_num
+
+
+@register
+class YOLOPHead(PPYOLOEHead):
+    def get_coord_extent(self, crop_size=640, stride= 640):
+        """
+        crop_size: size of the cropped image
+        stride: stride of the cropping
+        """
+        coordinates = []
+        for i in range(0, 2560, stride):
+            for j in range(0, 2560, stride):
+                coordinates.append([(i, j), (i + crop_size, j + crop_size)])
+        return coordinates
+
+    def box_recover(self, pred_bboxes, pred_scores):
+        pass
+        if pred_bboxes.shape[0] == 17:
+            pred_bboxes[0] *= 4
+
+        coord_extent = self.get_coord_extent()
+        for i in range(len(coord_extent)):
+            (xs, ys), (xe, ye) = coord_extent[i]
+            coord = paddle.Tensor(np.array([xs, ys, xs, ys]), place=pred_bboxes.place)
+            bboxs_off = pred_bboxes[i+1] + coord
+            mask_x_invalid = ((bboxs_off[:, 0] < xs) & (bboxs_off[:, 1] < ys) &
+                              (bboxs_off[:, 2] < xs) & (bboxs_off[:, 3] < ys))
+            mask_x_invalid = (1 - mask_x_invalid.astype('int32')).unsqueeze(-1)
+            bboxs_off = bboxs_off * mask_x_invalid
+            pred_bboxes[i+1] = bboxs_off
+        pred_bboxes = pred_bboxes.reshape((1, -1, pred_bboxes.shape[-1]))
+        pred_scores = pred_scores.reshape((1, pred_scores.shape[1], -1))
+        return pred_bboxes, pred_scores
+
+
+    def post_process(self, head_outs, scale_factor):
+        pred_scores, pred_dist, anchor_points, stride_tensor = head_outs
+        pred_bboxes = batch_distance2bbox(anchor_points, pred_dist)
+        pred_bboxes *= stride_tensor
+        if self.exclude_post_process:
+            return paddle.concat(
+                [pred_bboxes, pred_scores.transpose([0, 2, 1])], axis=-1), None
+        else:
+            # scale bbox to origin
+            scale_y, scale_x = paddle.split(scale_factor, 2, axis=-1)
+            scale_factor = paddle.concat(
+                [scale_x, scale_y, scale_x, scale_y],
+                axis=-1).reshape([-1, 1, 4])
+            pred_bboxes /= scale_factor
+
+            pred_bboxes, pred_scores = self.box_recover(pred_bboxes, pred_scores)
+
+            if self.exclude_nms:
+                # `exclude_nms=True` just use in benchmark
+                return pred_bboxes, pred_scores
+            else:
+                bbox_pred, bbox_num, _ = self.nms(pred_bboxes, pred_scores)
+                return bbox_pred, bbox_num
+
 
 
 def get_activation(name="LeakyReLU"):

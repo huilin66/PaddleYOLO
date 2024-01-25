@@ -98,6 +98,9 @@ class COCOMetric(Metric):
         outs['im_id'] = im_id.numpy() if isinstance(im_id,
                                                     paddle.Tensor) else im_id
 
+        # outs['im_id'] = np.repeat(outs['im_id'], 17, axis=0)
+
+
         infer_results = get_infer_results(
             outs, self.clsid2catid, bias=self.bias)
         self.results['bbox'] += infer_results[

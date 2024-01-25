@@ -38,6 +38,15 @@ MODEL_cfg = {
         window_size=7,
         pretrained='https://bj.bcebos.com/v1/paddledet/models/pretrained/swin_tiny_patch4_window7_224_22kto1k_pretrained.pdparams',
     ),
+    'swin_T3_224': dict(
+        pretrain_img_size=224,
+        embed_dim=96,
+        depths=[2, 2, 6],
+        num_heads=[3, 6, 12],
+        window_size=7,
+        out_indices=(0, 1, 2),
+        pretrained='https://bj.bcebos.com/v1/paddledet/models/pretrained/swin_tiny_patch4_window7_224_22kto1k_pretrained.pdparams',
+    ),
     'swin_S_224': dict(
         pretrain_img_size=224,
         embed_dim=96,
